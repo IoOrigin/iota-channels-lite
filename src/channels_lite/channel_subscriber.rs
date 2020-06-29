@@ -87,6 +87,38 @@ impl Channel {
     }
 
     ///
+    /// Reconnect without sending the subscriber message, works only if that was done previously
+    ///
+    pub fn reconnect(&mut self) -> Fallible<String> {
+        let message_list = self
+            .client
+            .recv_messages_with_options(&self.announcement_link, ())?;
+
+        let mut found_valid_msg = false;
+
+        for tx in message_list.iter() {
+            let header = tx.parse_header()?;
+            if header.check_content_type(message::announce::TYPE) {
+                self.subscriber.unwrap_announcement(header.clone())?;
+                found_valid_msg = true;
+                break;
+            }
+        }
+        if found_valid_msg {
+            let subscribe_link = {
+                let msg = self.subscriber.subscribe(&self.announcement_link)?;
+                msg.link.clone()
+            };
+
+            self.subscription_link = subscribe_link;
+            self.is_connected = true;
+        } else {
+            println!("No valid announce message found");
+        }
+        Ok(self.subscription_link.msgid.to_string())
+    }
+
+    ///
     /// Disconnect
     ///
     pub fn disconnect(&mut self) -> Fallible<String> {
